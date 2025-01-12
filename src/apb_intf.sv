@@ -30,6 +30,7 @@ interface APB #(
   data_t          prdata;
   logic           pslverr;
   logic           pclk;   // Add ckl for APB bus
+  logic           preset_n; // Add PRESETn
 
   modport Master (
     output paddr, 
@@ -38,6 +39,7 @@ interface APB #(
            pwrite, 
            pwdata, 
            pclk,
+           preset_n,
 
     input  pready, 
            prdata, 
@@ -51,6 +53,7 @@ interface APB #(
            pwrite, 
            pwdata, 
            pclk,
+           preset_n,
             
     output pready, 
            prdata, 
@@ -82,6 +85,7 @@ interface APB_DV #(
   data_t          prdata;
   logic           pslverr;
   logic           pclk;   // Add ckl for APB bus
+  logic           preset_n; // Add PRESETn
 
   modport Master (
     output paddr, 
