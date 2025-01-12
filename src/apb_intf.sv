@@ -66,13 +66,29 @@ interface APB_DV #(
   logic           pslverr;
 
   modport Master (
-    output paddr, psel, penable, pwrite, pwdata, pstrb,
-    input  pready, prdata, pslverr
+    output paddr, 
+           psel, 
+           penable, 
+           pwrite, 
+           pwdata, 
+           pstrb,
+
+    input  pready, 
+           prdata, 
+           pslverr
   );
 
   modport Slave (
-    input  paddr, psel, penable, pwrite, pwdata, pstrb,
-    output pready, prdata, pslverr
+    input  paddr, 
+           psel, 
+           penable, 
+           pwrite, 
+           pwdata, 
+           pstrb,
+
+    output pready, 
+           prdata, 
+           pslverr
   );
 
 endinterface
