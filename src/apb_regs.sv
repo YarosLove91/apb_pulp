@@ -210,8 +210,6 @@ module apb_regs_intf #(
   parameter type                  reg_data_t     = logic[REG_DATA_WIDTH-1:0]
 ) (
   // APB Interface
-  input  logic                        pclk_i,
-  input  logic                        preset_ni,
   APB.Slave                           slv,
   // Register Interface
   input  apb_addr_t                   base_addr_i, // base address of the read only registers
@@ -241,8 +239,8 @@ module apb_regs_intf #(
     .req_t        ( apb_req_t      ),
     .resp_t       ( apb_resp_t     )
   ) i_apb_regs (
-    .pclk_i,
-    .preset_ni,
+    .slv.pclk,
+    .slv.preset_ni,
     .req_i       ( apb_req  ),
     .resp_o      ( apb_resp ),
     .base_addr_i,
