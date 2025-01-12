@@ -32,13 +32,29 @@ interface APB #(
   logic           pclk;   // Add ckl for APB bus
 
   modport Master (
-    output paddr, psel, penable, pwrite, pwdata, pclk, 
-    input  pready, prdata, pslverr
+    output paddr, 
+           psel, 
+           penable, 
+           pwrite, 
+           pwdata, 
+           pclk,
+
+    input  pready, 
+           prdata, 
+           pslverr
   );
 
   modport Slave (
-    input  paddr, psel, penable, pwrite, pwdata, pclk, 
-    output pready, prdata, pslverr
+    input  paddr, 
+           psel, 
+           penable, 
+           pwrite, 
+           pwdata, 
+           pclk,
+            
+    output pready, 
+           prdata, 
+           pslverr
   );
 
 endinterface
@@ -68,13 +84,29 @@ interface APB_DV #(
   logic           pclk;   // Add ckl for APB bus
 
   modport Master (
-    output paddr, psel, penable, pwrite, pwdata, pclk, 
-    input  pready, prdata, pslverr
+    output paddr, 
+           psel, 
+           penable, 
+           pwrite, 
+           pwdata, 
+           pclk,
+
+    input  pready, 
+           prdata, 
+           pslverr
   );
 
   modport Slave (
-    input  paddr, psel, penable, pwrite, pwdata, pclk,
-    output pready, prdata, pslverr
+    input  paddr, 
+           psel, 
+           penable,
+           pwrite, 
+           pwdata, 
+           pclk,
+
+    output pready, 
+           prdata, 
+           pslverr
   );
 
 endinterface
