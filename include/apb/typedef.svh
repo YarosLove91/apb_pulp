@@ -26,13 +26,13 @@
 `define APB_TYPEDEF_REQ_T(apb_req_t, addr_t, data_t, strb_t)  \
   typedef struct packed {                                     \
     addr_t          paddr;                                    \
-    apb_pkg::prot_t pprot;                                    \
     logic           psel;                                     \
     logic           penable;                                  \
     logic           pwrite;                                   \
     data_t          pwdata;                                   \
     strb_t          pstrb;                                    \
   } apb_req_t;
+    // apb_pkg::prot_t pprot;                                    \
 `define APB_TYPEDEF_RESP_T(apb_resp_t, data_t) \
   typedef struct packed {                      \
     logic  pready;                             \

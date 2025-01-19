@@ -76,13 +76,13 @@
 `define APB_TO_REQ(opt_as, req_struct, apb_if) \
   opt_as req_struct = '{                       \
     paddr:   apb_if.paddr,                     \
-    pprot:   apb_if.pprot,                     \
     psel:    apb_if.psel,                      \
     penable: apb_if.penable,                   \
     pwrite:  apb_if.pwrite,                    \
     pwdata:  apb_if.pwdata,                    \
     pstrb:   apb_if.pstrb                      \
   };
+    // pprot:   apb_if.pprot,                     \
 `define APB_TO_RESP(opt_as, resp_struct, apb_if) \
   opt_as resp_struct = '{                        \
     pready:  apb_if.pready,                      \

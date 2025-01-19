@@ -61,6 +61,7 @@ module apb_regs #(
   parameter int unsigned        ApbDataWidth = 32'd0,
   parameter int unsigned        RegDataWidth = 32'd0,
   parameter bit [NoApbRegs-1:0] ReadOnly     = 32'h0,
+  parameter bit [NoApbRegs-1:0] WriteToClear = 32'h0,
   parameter type                req_t        = logic,
   parameter type                resp_t       = logic,
   // DEPENDENT PARAMETERS DO NOT OVERWRITE!
@@ -109,8 +110,30 @@ module apb_regs #(
 
   always_comb begin
     // default assignments
-    reg_d      = has_reset_q ? reg_q : reg_init_i;
-    reg_update = '0;
+    for (int r = 0; r < NoApbRegs; r++) begin
+      if (WriteToClear[r]) begin // new value from core (APB slave in this context)
+        // update w1c reg only if there is at least one bit to be set '1'
+        reg_update[r] = |reg_init_i[r];
+      end else begin
+        reg_update[r] = 0;
+      end
+    end
+
+    for (int r = 0; r < NoApbRegs; r++) begin
+      if (has_reset_q) begin
+        reg_d[r] = reg_q[r];
+      end else if (WriteToClear[r]) begin // new value from core (APB slave in this context)
+        // if input value for w1c reg bit is '1' - write it;
+        // otherwise - keep previous value
+        for (int b = 0; b < RegDataWidth; b++) begin
+          reg_d[r][b] = reg_init_i[r][b] ? 1 : reg_q[r][b];
+        end
+      end else begin
+        reg_d[r] = reg_init_i;
+      end
+    end
+    // reg_d      = has_reset_q ? reg_q : reg_init_i;
+    // reg_update = '0;
     resp_o     = '{
       pready:  req_i.psel & req_i.penable,
       prdata:  apb_data_t'(32'h0BAD_B10C),
@@ -123,12 +146,20 @@ module apb_regs #(
       end else begin
         if (req_i.pwrite) begin
           if (!ReadOnly[reg_idx]) begin
-            for (int unsigned i = 0; i < RegDataWidth; i++) begin
-              if (req_i.pstrb[i/8]) begin
-                reg_d[reg_idx][i] = req_i.pwdata[i];
+            if (!WriteToClear[reg_idx]) begin
+              for (int unsigned i = 0; i < RegDataWidth; i++) begin
+                if (req_i.pstrb[i/8]) begin
+                  reg_d[reg_idx][i] = req_i.pwdata[i];
+                end
+              end
+            end else begin  // write 1 to clear bit (from APB master)
+              for (int unsigned i = 0; i < RegDataWidth; i++) begin
+                if (req_i.pstrb[i/8]) begin
+                  reg_d[reg_idx][i] = req_i.pwdata[i] ? 'd0 : reg_q[reg_idx][i];
+                end
               end
             end
-            reg_update[reg_idx] = |req_i.pstrb;
+            reg_update[reg_idx] = (|req_i.pstrb) || (|reg_init_i[reg_idx]);
           end else begin
             // this register is read only
             resp_o.pslverr = apb_pkg::RESP_SLVERR;
@@ -205,15 +236,19 @@ module apb_regs_intf #(
   parameter int unsigned          APB_DATA_WIDTH = 32'd0, // data width of the registers
   parameter int unsigned          REG_DATA_WIDTH = 32'd0,
   parameter bit [NO_APB_REGS-1:0] READ_ONLY      = 32'h0,
+  parameter bit [NO_APB_REGS-1:0] WRITE_TO_CLEAR = 32'h0,
+
   // DEPENDENT PARAMETERS DO NOT OVERWRITE!
   parameter type                  apb_addr_t     = logic[APB_ADDR_WIDTH-1:0],
   parameter type                  reg_data_t     = logic[REG_DATA_WIDTH-1:0]
 ) (
   // APB Interface
+  input  logic                        pclk_i,
+  input  logic                        presetn_i,
   APB.Slave                           slv,
   // Register Interface
-  input  apb_addr_t                   base_addr_i, // base address of the read only registers
-  input  reg_data_t [NO_APB_REGS-1:0] reg_init_i,  // initalisation value for the registers
+  input  apb_addr_t                   base_addr_i, // base address of the registers
+  input  reg_data_t [NO_APB_REGS-1:0] reg_init_i,  // initialisation value for the registers
   output reg_data_t [NO_APB_REGS-1:0] reg_q_o
 );
   localparam int unsigned APB_STRB_WIDTH = cf_math_pkg::ceil_div(APB_DATA_WIDTH, 8);
@@ -226,26 +261,35 @@ module apb_regs_intf #(
   apb_req_t  apb_req;
   apb_resp_t apb_resp;
 
-  `APB_ASSIGN_TO_REQ(apb_req, slv)
+  // `APB_ASSIGN_TO_REQ(apb_req, slv)
+
+  assign apb_req.paddr    = slv.paddr;
+  assign apb_req.psel     = slv.psel;
+  assign apb_req.penable  = slv.penable;
+  assign apb_req.pwrite   = slv.pwrite;
+  assign apb_req.pwdata   = slv.pwdata;
+  assign apb_req.pstrb    = slv.pstrb;
+
   `APB_ASSIGN_FROM_RESP(slv, apb_resp )
 
   apb_regs #(
-    .NoApbRegs    ( NO_APB_REGS    ),
-    .ApbAddrWidth ( APB_ADDR_WIDTH ),
-    .AddrOffset   ( ADDR_OFFSET    ),
-    .ApbDataWidth ( APB_DATA_WIDTH ),
-    .RegDataWidth ( REG_DATA_WIDTH ),
-    .ReadOnly     ( READ_ONLY      ),
-    .req_t        ( apb_req_t      ),
-    .resp_t       ( apb_resp_t     )
+    .NoApbRegs   (NO_APB_REGS   ),
+    .ApbAddrWidth(APB_ADDR_WIDTH),
+    .AddrOffset  (ADDR_OFFSET   ),
+    .ApbDataWidth(APB_DATA_WIDTH),
+    .RegDataWidth(REG_DATA_WIDTH),
+    .ReadOnly    (READ_ONLY     ),
+    .WriteToClear(WRITE_TO_CLEAR),
+    .req_t       (apb_req_t     ),
+    .resp_t      (apb_resp_t    )
   ) i_apb_regs (
-    .slv.pclk,
-    .slv.preset_ni,
-    .req_i       ( apb_req  ),
-    .resp_o      ( apb_resp ),
-    .base_addr_i,
-    .reg_init_i,
-    .reg_q_o
+    .pclk_i     (pclk_i     ),
+    .preset_ni  (presetn_i  ),
+    .req_i      (apb_req    ),
+    .resp_o     (apb_resp   ),
+    .base_addr_i(base_addr_i),
+    .reg_init_i (reg_init_i ),
+    .reg_q_o    (reg_q_o    )
   );
 
   // Validate parameters.
