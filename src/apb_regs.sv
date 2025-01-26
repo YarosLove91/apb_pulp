@@ -55,27 +55,29 @@
 `include "common_cells/registers.svh"
 
 module apb_regs #(
-  parameter int unsigned        NoApbRegs    = 32'd0,
-  parameter int unsigned        ApbAddrWidth = 32'd0,
-  parameter int unsigned        AddrOffset   = 32'd4,
-  parameter int unsigned        ApbDataWidth = 32'd0,
-  parameter int unsigned        RegDataWidth = 32'd0,
-  parameter bit [NoApbRegs-1:0] ReadOnly     = 32'h0,
-  parameter bit [NoApbRegs-1:0] WriteToClear = 32'h0,
-  parameter type                req_t        = logic,
-  parameter type                resp_t       = logic,
+  parameter int  unsigned                 NoApbRegs     = 32'd0                  ,
+  parameter int  unsigned                 ApbAddrWidth  = 32'd0                  ,
+  parameter int  unsigned                 AddrOffset    = 32'd4                  ,
+  parameter int  unsigned                 ApbDataWidth  = 32'd0                  ,
+  parameter int  unsigned                 RegDataWidth  = 32'd0                  ,
+  parameter bit           [NoApbRegs-1:0] ReadOnly      = 32'h0                  , // r/o
+  parameter bit           [NoApbRegs-1:0] WriteToClear  = 32'h0                  , // w1c
+  parameter bit           [NoApbRegs-1:0] WriteToUpdate = 32'h0                  , // w1u
+  // parameter bit           [NoApbRegs-1:0] RWCoreAccess  = 32'h0                  , // r/w_ca
+  parameter type                          req_t         = logic                  ,
+  parameter type                          resp_t        = logic                  ,
   // DEPENDENT PARAMETERS DO NOT OVERWRITE!
-  parameter type apb_addr_t                  = logic[ApbAddrWidth-1:0],
-  parameter type reg_data_t                  = logic[RegDataWidth-1:0]
+  parameter type                          apb_addr_t    = logic[ApbAddrWidth-1:0],
+  parameter type                          reg_data_t    = logic[RegDataWidth-1:0]
 ) (
   // APB Interface
-  input  logic                      pclk_i,
-  input  logic                      preset_ni,
-  input  req_t                      req_i,
-  output resp_t                     resp_o,
+  input  logic                      pclk_i     ,
+  input  logic                      preset_ni  ,
+  input  req_t                      req_i      ,
+  output resp_t                     resp_o     ,
   // Register Interface
   input  apb_addr_t                 base_addr_i, // base address of the read/write registers
-  input  reg_data_t [NoApbRegs-1:0] reg_init_i,
+  input  reg_data_t [NoApbRegs-1:0] reg_init_i ,
   output reg_data_t [NoApbRegs-1:0] reg_q_o
 );
   localparam int unsigned IdxWidth  = (NoApbRegs > 32'd1) ? $clog2(NoApbRegs) : 32'd1;
@@ -111,9 +113,13 @@ module apb_regs #(
   always_comb begin
     // default assignments
     for (int r = 0; r < NoApbRegs; r++) begin
-      if (WriteToClear[r]) begin // new value from core (APB slave in this context)
+      if (WriteToClear[r]) begin // new input value from core, where this module is instantiated
         // update w1c reg only if there is at least one bit to be set '1'
         reg_update[r] = |reg_init_i[r];
+      end else if (WriteToUpdate[r]) begin
+        reg_update[r] = 1; // always update w1u for setting '0' after writing '1'
+      // end else if (RWCoreAccess[r]) begin
+      //   reg_update[r] = reg_init_i[r] != reg_q[r];
       end else begin
         reg_update[r] = 0;
       end
@@ -122,23 +128,28 @@ module apb_regs #(
     for (int r = 0; r < NoApbRegs; r++) begin
       if (has_reset_q) begin
         reg_d[r] = reg_q[r];
-      end else if (WriteToClear[r]) begin // new value from core (APB slave in this context)
+      end else if (WriteToClear[r]) begin // new input value from core, where this module is instantiated
         // if input value for w1c reg bit is '1' - write it;
         // otherwise - keep previous value
         for (int b = 0; b < RegDataWidth; b++) begin
           reg_d[r][b] = reg_init_i[r][b] ? 1 : reg_q[r][b];
         end
+      end else if (WriteToUpdate[r]) begin
+        reg_d[r] = '0; // this will clear w1u reg on the next cycle after writing '1'
       end else begin
+        // default value for flip-flops' inputs;
+        // it doesn't play a role cause reg_update for r/w regs is defined further
+        // and for r/o reg_init_i values are used for resp_o output
         reg_d[r] = reg_init_i;
       end
     end
-    // reg_d      = has_reset_q ? reg_q : reg_init_i;
-    // reg_update = '0;
+
     resp_o     = '{
       pready:  req_i.psel & req_i.penable,
       prdata:  apb_data_t'(32'h0BAD_B10C),
       pslverr: apb_pkg::RESP_OKAY
     };
+
     if (req_i.psel) begin
       if (!decode_valid) begin
         // Error response on decode errors
@@ -152,14 +163,19 @@ module apb_regs #(
                   reg_d[reg_idx][i] = req_i.pwdata[i];
                 end
               end
+              reg_update[reg_idx] = |req_i.pstrb;
             end else begin  // write 1 to clear bit (from APB master)
               for (int unsigned i = 0; i < RegDataWidth; i++) begin
                 if (req_i.pstrb[i/8]) begin
-                  reg_d[reg_idx][i] = req_i.pwdata[i] ? 'd0 : reg_q[reg_idx][i];
+                  // new input '1' from core has higher priority over write '1' to clear
+                  if (reg_init_i[reg_idx][i])
+                    reg_d[reg_idx][i] = 1;
+                  else
+                    reg_d[reg_idx][i] = req_i.pwdata[i] ? 'd0 : reg_q[reg_idx][i];
                 end
               end
+              reg_update[reg_idx] = (|req_i.pstrb) || (|reg_init_i[reg_idx]);
             end
-            reg_update[reg_idx] = (|req_i.pstrb) || (|reg_init_i[reg_idx]);
           end else begin
             // this register is read only
             resp_o.pslverr = apb_pkg::RESP_SLVERR;
@@ -230,13 +246,15 @@ endmodule
 `include "apb/typedef.svh"
 
 module apb_regs_intf #(
-  parameter int unsigned          NO_APB_REGS    = 32'd0, // number of read only registers
-  parameter int unsigned          APB_ADDR_WIDTH = 32'd0, // address width of `paddr`
-  parameter int unsigned          ADDR_OFFSET    = 32'd4, // address offset in bytes
-  parameter int unsigned          APB_DATA_WIDTH = 32'd0, // data width of the registers
-  parameter int unsigned          REG_DATA_WIDTH = 32'd0,
-  parameter bit [NO_APB_REGS-1:0] READ_ONLY      = 32'h0,
-  parameter bit [NO_APB_REGS-1:0] WRITE_TO_CLEAR = 32'h0,
+  parameter int unsigned          NO_APB_REGS     = 32'd0, // number of read only registers
+  parameter int unsigned          APB_ADDR_WIDTH  = 32'd0, // address width of `paddr`
+  parameter int unsigned          ADDR_OFFSET     = 32'd4, // address offset in bytes
+  parameter int unsigned          APB_DATA_WIDTH  = 32'd0, // data width of the registers
+  parameter int unsigned          REG_DATA_WIDTH  = 32'd0,
+  parameter bit [NO_APB_REGS-1:0] READ_ONLY       = 32'h0, // r/o
+  parameter bit [NO_APB_REGS-1:0] WRITE_TO_CLEAR  = 32'h0, // w1c
+  parameter bit [NO_APB_REGS-1:0] WRITE_TO_UPDATE = 32'h0, // w1u
+  // parameter bit [NO_APB_REGS-1:0] RW_CORE_ACCESS  = 32'h0,
 
   // DEPENDENT PARAMETERS DO NOT OVERWRITE!
   parameter type                  apb_addr_t     = logic[APB_ADDR_WIDTH-1:0],
@@ -273,15 +291,17 @@ module apb_regs_intf #(
   `APB_ASSIGN_FROM_RESP(slv, apb_resp )
 
   apb_regs #(
-    .NoApbRegs   (NO_APB_REGS   ),
-    .ApbAddrWidth(APB_ADDR_WIDTH),
-    .AddrOffset  (ADDR_OFFSET   ),
-    .ApbDataWidth(APB_DATA_WIDTH),
-    .RegDataWidth(REG_DATA_WIDTH),
-    .ReadOnly    (READ_ONLY     ),
-    .WriteToClear(WRITE_TO_CLEAR),
-    .req_t       (apb_req_t     ),
-    .resp_t      (apb_resp_t    )
+    .NoApbRegs    (NO_APB_REGS    ),
+    .ApbAddrWidth (APB_ADDR_WIDTH ),
+    .AddrOffset   (ADDR_OFFSET    ),
+    .ApbDataWidth (APB_DATA_WIDTH ),
+    .RegDataWidth (REG_DATA_WIDTH ),
+    .ReadOnly     (READ_ONLY      ),
+    .WriteToClear (WRITE_TO_CLEAR ),
+    .WriteToUpdate(WRITE_TO_UPDATE),
+    // .RWCoreAccess (RW_CORE_ACCESS ),
+    .req_t        (apb_req_t      ),
+    .resp_t       (apb_resp_t     )
   ) i_apb_regs (
     .pclk_i     (pclk_i     ),
     .preset_ni  (presetn_i  ),
