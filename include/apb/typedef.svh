@@ -26,6 +26,7 @@
 `define APB_TYPEDEF_REQ_T(apb_req_t, addr_t, data_t, strb_t)  \
   typedef struct packed {                                     \
     addr_t          paddr;                                    \
+    //apb_pkg::prot_t pprot;                                    \
     logic           psel;                                     \
     logic           penable;                                  \
     logic           pwrite;                                   \

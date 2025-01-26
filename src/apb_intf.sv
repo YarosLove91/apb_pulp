@@ -29,37 +29,15 @@ interface APB #(
   logic           pready;
   data_t          prdata;
   logic           pslverr;
-  // logic           pclk;   // Add ckl for APB bus
-  // logic           preset_n; // Add PRESETn
 
   modport Master (
-    output paddr, 
-           psel, 
-           penable, 
-           pwrite, 
-           pwdata, 
-           pstrb,
-           // pclk,
-           // preset_n,
-
-    input  pready, 
-           prdata, 
-           pslverr
+    output paddr, psel, penable, pwrite, pwdata, pstrb,
+    input  pready, prdata, pslverr
   );
 
   modport Slave (
-    input  paddr, 
-           psel, 
-           penable, 
-           pwrite, 
-           pwdata, 
-           pstrb,
-           // pclk,
-           // preset_n,
-            
-    output pready, 
-           prdata, 
-           pslverr
+    input  paddr, psel, penable, pwrite, pwdata, pstrb,
+    output pready, prdata, pslverr
   );
 
 endinterface
@@ -86,8 +64,6 @@ interface APB_DV #(
   logic           pready;
   data_t          prdata;
   logic           pslverr;
-  logic           pclk;   // Add ckl for APB bus
-  logic           preset_n; // Add PRESETn
 
   modport Master (
     output paddr, 
@@ -96,7 +72,6 @@ interface APB_DV #(
            pwrite, 
            pwdata, 
            pstrb,
-           pclk,
 
     input  pready, 
            prdata, 
@@ -106,11 +81,10 @@ interface APB_DV #(
   modport Slave (
     input  paddr, 
            psel, 
-           penable,
+           penable, 
            pwrite, 
            pwdata, 
            pstrb,
-           pclk,
 
     output pready, 
            prdata, 

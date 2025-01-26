@@ -19,7 +19,7 @@
 // `APB_ASSIGN(slv, mst)
 `define APB_ASSIGN(dst, src)         \
   assign dst.paddr   = src.paddr;    \
-  assign dst.pprot   = src.pprot;    \
+  //assign dst.pprot   = src.pprot;    \
   assign dst.psel    = src.psel;     \
   assign dst.penable = src.penable;  \
   assign dst.pwrite  = src.pwrite;   \
@@ -35,7 +35,7 @@
 // (with `opt_as = assign`) and assignments inside process (with `opt_as` void) with the same code.
 `define APB_FROM_REQ(opt_as, apb_if, req_struct) \
   opt_as apb_if.paddr   = req_struct.paddr;      \
-  opt_as apb_if.pprot   = req_struct.pprot;      \
+  //opt_as apb_if.pprot   = req_struct.pprot;      \
   opt_as apb_if.psel    = req_struct.psel;       \
   opt_as apb_if.penable = req_struct.penable;    \
   opt_as apb_if.pwrite  = req_struct.pwrite;     \
@@ -76,6 +76,7 @@
 `define APB_TO_REQ(opt_as, req_struct, apb_if) \
   opt_as req_struct = '{                       \
     paddr:   apb_if.paddr,                     \
+    //pprot:   apb_if.pprot,                     \
     psel:    apb_if.psel,                      \
     penable: apb_if.penable,                   \
     pwrite:  apb_if.pwrite,                    \
