@@ -35,7 +35,7 @@ module apb_demux #(
   end else begin
     for (genvar idx = 0; idx < NoMstPorts; idx++) begin
       assign mst_req_o[idx].paddr   = slv_req_i.paddr;
-      assign mst_req_o[idx].pprot   = slv_req_i.pprot;
+      // assign mst_req_o[idx].pprot   = slv_req_i.pprot;
       assign mst_req_o[idx].psel    = (select_i == idx)? slv_req_i.psel: 1'b0;
       assign mst_req_o[idx].penable = (select_i == idx)? slv_req_i.penable: 1'b0;
       assign mst_req_o[idx].pwrite  = slv_req_i.pwrite;
