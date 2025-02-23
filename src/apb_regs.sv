@@ -195,7 +195,7 @@ module apb_regs #(
   // output assignment and registers
   for (genvar i = 0; i < NoApbRegs; i++) begin : gen_rw_regs
     assign reg_q_o[i] = ReadOnly[i] ? reg_init_i[i] : reg_q[i];
-    `FFLARN(reg_q[i], reg_d[i], reg_update[i], '0, pclk_i, preset_ni)
+    `FFL(reg_q[i], reg_d[i], reg_update[i], '0, pclk_i, preset_ni)
   end
 
   addr_decode #(
