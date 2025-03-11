@@ -71,14 +71,20 @@ module apb_regs #(
   parameter type                          reg_data_t    = logic[RegDataWidth-1:0]
 ) (
   // APB Interface
-  input  logic                      pclk_i     ,
-  input  logic                      preset_ni  ,
-  input  req_t                      req_i      ,
-  output resp_t                     resp_o     ,
+  input  logic                        pclk_i     ,
+  input  logic                        preset_ni  ,
+  // input  req_t                      req_i      ,
+  input  logic [ApbAddrWidth    -1:0] req_i_paddr,
+  input  logic                        req_i_psel,
+  input  logic                        req_i_penable,
+  input  logic                        req_i_pwrite,
+  input  logic [ApbDataWidth    -1:0] req_i_pwdata,
+  input  logic [(ApbDataWidth/8)-1:0] req_i_pstrb,
+  output resp_t                       resp_o     ,
   // Register Interface
-  input  apb_addr_t                 base_addr_i, // base address of the read/write registers
-  input  reg_data_t [NoApbRegs-1:0] reg_init_i ,
-  output reg_data_t [NoApbRegs-1:0] reg_q_o
+  input  apb_addr_t                   base_addr_i, // base address of the read/write registers
+  input  reg_data_t [NoApbRegs-1:0]   reg_init_i ,
+  output reg_data_t [NoApbRegs-1:0]   reg_q_o
 );
   localparam int unsigned IdxWidth  = (NoApbRegs > 32'd1) ? $clog2(NoApbRegs) : 32'd1;
   typedef logic [IdxWidth-1:0]     idx_t;
@@ -145,36 +151,36 @@ module apb_regs #(
     end
 
     resp_o     = '{
-      pready:  req_i.psel & req_i.penable,
+      pready:  req_i_psel & req_i_penable,
       prdata:  apb_data_t'(32'h0BAD_B10C),
       pslverr: apb_pkg::RESP_OKAY
     };
 
-    if (req_i.psel) begin
+    if (req_i_psel) begin
       if (!decode_valid) begin
         // Error response on decode errors
         resp_o.pslverr = apb_pkg::RESP_SLVERR;
       end else begin
-        if (req_i.pwrite) begin
+        if (req_i_pwrite) begin
           if (!ReadOnly[reg_idx]) begin
             if (!WriteToClear[reg_idx]) begin
               for (int unsigned i = 0; i < RegDataWidth; i++) begin
-                if (req_i.pstrb[i/8]) begin
-                  reg_d[reg_idx][i] = req_i.pwdata[i];
+                if (req_i_pstrb[i/8]) begin
+                  reg_d[reg_idx][i] = req_i_pwdata[i];
                 end
               end
-              reg_update[reg_idx] = |req_i.pstrb;
+              reg_update[reg_idx] = |req_i_pstrb;
             end else begin  // write 1 to clear bit (from APB master)
               for (int unsigned i = 0; i < RegDataWidth; i++) begin
-                if (req_i.pstrb[i/8]) begin
+                if (req_i_pstrb[i/8]) begin
                   // new input '1' from core has higher priority over write '1' to clear
                   if (reg_init_i[reg_idx][i])
                     reg_d[reg_idx][i] = 1;
                   else
-                    reg_d[reg_idx][i] = req_i.pwdata[i] ? 'd0 : reg_q[reg_idx][i];
+                    reg_d[reg_idx][i] = req_i_pwdata[i] ? 'd0 : reg_q[reg_idx][i];
                 end
               end
-              reg_update[reg_idx] = (|req_i.pstrb) || (|reg_init_i[reg_idx]);
+              reg_update[reg_idx] = (|req_i_pstrb) || (|reg_init_i[reg_idx]);
             end
           end else begin
             // this register is read only
@@ -204,7 +210,7 @@ module apb_regs #(
     .addr_t    ( apb_addr_t ),
     .rule_t    ( rule_t     )
   ) i_addr_decode (
-    .addr_i      ( req_i.paddr  ),
+    .addr_i      ( req_i_paddr  ),
     .addr_map_i  ( addr_map     ),
     .idx_o       ( reg_idx      ),
     .dec_valid_o ( decode_valid ),
@@ -223,18 +229,18 @@ module apb_regs #(
           else $fatal(1, "ApbAddrWidth is not wide enough, has to be at least 3 bit wide!");
       assert (AddrOffset > 32'd3)
           else $fatal(1, "AddrOffset has to be at least 4 and is recommended to be a power of 2!");
-      assert ($bits(req_i.paddr) == ApbAddrWidth)
-          else $fatal(1, "AddrWidth does not match req_i.paddr!");
+      assert ($bits(req_i_paddr) == ApbAddrWidth)
+          else $fatal(1, "AddrWidth does not match req_i_paddr!");
       assert (ApbDataWidth == $bits(resp_o.prdata))
-          else $fatal(1, "ApbDataWidth has to be: ApbDataWidth == $bits(req_i.prdata)!");
+          else $fatal(1, "ApbDataWidth has to be: ApbDataWidth == $bits(req_i_prdata)!");
       assert (ApbDataWidth > 32'd0 && ApbDataWidth <= 32'd32)
           else $fatal(1, "ApbDataWidth has to be: 32'd32 >= RegDataWidth > 0!");
-      assert ($bits(resp_o.prdata) == $bits(req_i.pwdata))
-          else $fatal(1, "req_i.pwdata has to match resp_o.prdata in width!");
+      assert ($bits(resp_o.prdata) == $bits(req_i_pwdata))
+          else $fatal(1, "req_i_pwdata has to match resp_o.prdata in width!");
       assert (RegDataWidth > 32'd0 && RegDataWidth <= 32'd32)
           else $fatal(1, "RegDataWidth has to be: 32'd32 >= RegDataWidth > 0!");
       assert (RegDataWidth <= $bits(resp_o.prdata))
-          else $fatal(1, "RegDataWidth has to be: RegDataWidth <= $bits(req_i.prdata)!");
+          else $fatal(1, "RegDataWidth has to be: RegDataWidth <= $bits(req_i_prdata)!");
       assert (NoApbRegs == $bits(ReadOnly))
           else $fatal(1, "Each register need a `ReadOnly` flag!");
     end
@@ -276,17 +282,24 @@ module apb_regs_intf #(
   `APB_TYPEDEF_REQ_T(apb_req_t, apb_addr_t, apb_data_t, apb_strb_t)
   `APB_TYPEDEF_RESP_T(apb_resp_t, apb_data_t)
 
-  apb_req_t  apb_req;
-  apb_resp_t apb_resp;
+  // NOTE: removed req_t structs because they caused wrong pwdata assign (no idea why)
+  // apb_req_t  apb_req;
+  apb_addr_t  apb_req_paddr;
+  logic       apb_req_psel;
+  logic       apb_req_penable;
+  logic       apb_req_pwrite;
+  apb_data_t  apb_req_pwdata;
+  apb_strb_t  apb_req_pstrb;
+  apb_resp_t  apb_resp;
 
   // `APB_ASSIGN_TO_REQ(apb_req, slv)
 
-  assign apb_req.paddr    = slv.paddr;
-  assign apb_req.psel     = slv.psel;
-  assign apb_req.penable  = slv.penable;
-  assign apb_req.pwrite   = slv.pwrite;
-  assign apb_req.pwdata   = slv.pwdata;
-  assign apb_req.pstrb    = slv.pstrb;
+  assign apb_req_paddr    = slv.paddr;
+  assign apb_req_psel     = slv.psel;
+  assign apb_req_penable  = slv.penable;
+  assign apb_req_pwrite   = slv.pwrite;
+  assign apb_req_pwdata   = slv.pwdata;
+  assign apb_req_pstrb    = slv.pstrb;
 
   `APB_ASSIGN_FROM_RESP(slv, apb_resp )
 
@@ -303,13 +316,19 @@ module apb_regs_intf #(
     .req_t        (apb_req_t      ),
     .resp_t       (apb_resp_t     )
   ) i_apb_regs (
-    .pclk_i     (pclk_i     ),
-    .preset_ni  (presetn_i  ),
-    .req_i      (apb_req    ),
-    .resp_o     (apb_resp   ),
-    .base_addr_i(base_addr_i),
-    .reg_init_i (reg_init_i ),
-    .reg_q_o    (reg_q_o    )
+    .pclk_i       (pclk_i         ),
+    .preset_ni    (presetn_i      ),
+    // .req_i        (apb_req        ),
+    .req_i_paddr  (apb_req_paddr  ),
+    .req_i_psel   (apb_req_psel   ),
+    .req_i_penable(apb_req_penable),
+    .req_i_pwrite (apb_req_pwrite ),
+    .req_i_pwdata (apb_req_pwdata ),
+    .req_i_pstrb  (apb_req_pstrb  ),
+    .resp_o       (apb_resp       ),
+    .base_addr_i  (base_addr_i    ),
+    .reg_init_i   (reg_init_i     ),
+    .reg_q_o      (reg_q_o        )
   );
 
   // Validate parameters.
